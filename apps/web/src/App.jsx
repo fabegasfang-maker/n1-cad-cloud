@@ -13,73 +13,76 @@ export function App() {
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [error, setError] = useState(null);
-  const [showMobileHelp, setShowMobileHelp] = useState(true);
+  /** มือถือ: รอให้กดดูแบบย่อก่อน auto-load */
+  const [awaitingMobileChoice, setAwaitingMobileChoice] = useState(false);
   const abortRef = useRef(null);
+  const bootedRef = useRef(false);
 
   useEffect(() => {
     const mobile = isMobileDevice();
     setIsMobile(mobile);
-    if (mobile) setProfile('mobile');
+    if (mobile) {
+      setProfile('mobile');
+      setAwaitingMobileChoice(true);
+    }
+    bootedRef.current = true;
   }, []);
 
-  const loadScene = useCallback(
-    async (prof = profile) => {
-      if (abortRef.current) abortRef.current.abort();
-      const ac = new AbortController();
-      abortRef.current = ac;
+  const loadScene = useCallback(async (prof) => {
+    if (abortRef.current) abortRef.current.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
-      setStatus('loading');
-      setError(null);
-      setMessage(
-        prof === 'mobile'
-          ? 'โหมดมือถือ: กำลังดึง scene ย่อจากเซิร์ฟเวอร์…'
-          : 'กำลังดึง scene จากเซิร์ฟเวอร์ (ครั้งแรกอาจใช้เวลานาน)…'
-      );
+    setStatus('loading');
+    setError(null);
+    setMessage(
+      prof === 'mobile'
+        ? 'โหมดมือถือ: กำลังดึง scene ย่อจากเซิร์ฟเวอร์…'
+        : 'กำลังดึง scene จากเซิร์ฟเวอร์ (ครั้งแรกอาจใช้เวลานาน)…'
+    );
 
-      try {
-        const url = `${API_BASE}/api/scene?folderId=${encodeURIComponent(FOLDER_ID)}&profile=${prof}`;
-        const res = await fetch(url, { signal: ac.signal });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || data.error || `HTTP ${res.status}`);
-        }
-        setScene(data);
-        setStatus('ready');
-        const cacheTag = data.cache === 'hit' ? 'แคช' : 'แปลงใหม่';
-        setMessage(
-          `${data.filename || 'drawing'} · ${Number(data.entityCount || 0).toLocaleString()} วัตถุ · ${cacheTag}` +
-            (data.resolveMs != null ? ` · ${data.resolveMs} ms` : '') +
-            (data.monthFolder ? ` · ${data.monthFolder}` : '') +
-            (prof === 'mobile' ? ' · mobile' : '')
-        );
-        if (prof === 'mobile') setShowMobileHelp(false);
-      } catch (e) {
-        if (e.name === 'AbortError') return;
-        setStatus('error');
-        setError(e.message || String(e));
-        setMessage('');
+    try {
+      const url = `${API_BASE}/api/scene?folderId=${encodeURIComponent(FOLDER_ID)}&profile=${prof}`;
+      const res = await fetch(url, { signal: ac.signal });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || `HTTP ${res.status}`);
       }
-    },
-    [profile]
-  );
+      setScene(data);
+      setStatus('ready');
+      setAwaitingMobileChoice(false);
+      const cacheTag = data.cache === 'hit' ? 'แคช' : 'แปลงใหม่';
+      setMessage(
+        `${data.filename || 'drawing'} · ${Number(data.entityCount || 0).toLocaleString()} วัตถุ · ${cacheTag}` +
+          (data.resolveMs != null ? ` · ${data.resolveMs} ms` : '') +
+          (data.monthFolder ? ` · ${data.monthFolder}` : '') +
+          (prof === 'mobile' ? ' · mobile' : '')
+      );
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setStatus('error');
+      setError(e.message || String(e));
+      setMessage('');
+    }
+  }, []);
 
+  // Desktop: โหลดอัตโนมัติหลัง boot
   useEffect(() => {
-    // มือถือ: ไม่ auto-load ทันที — ให้เลือกดาวน์โหลดหรือโหลดฉบับเบา
-    if (isMobile && showMobileHelp && !scene) return;
+    if (!bootedRef.current) return;
+    if (isMobile) return;
     loadScene(profile);
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [loadScene, profile, isMobile, showMobileHelp, scene]);
-
-  // แก้ dependency วน: auto-load เมื่อไม่ใช่มือถือ หรือมือถือกดแล้ว
-  useEffect(() => {
-    if (isMobile && showMobileHelp) return;
-    loadScene(profile);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile, showMobileHelp, profile]);
+  }, [isMobile, profile, loadScene]);
 
   const downloadUrl = `${API_BASE}/api/download?folderId=${encodeURIComponent(FOLDER_ID)}`;
+
+  const onViewLight = () => {
+    setAwaitingMobileChoice(false);
+    setProfile('mobile');
+    loadScene('mobile');
+  };
 
   return (
     <div
@@ -142,10 +145,7 @@ export function App() {
           )}
           <button
             type="button"
-            onClick={() => {
-              setShowMobileHelp(false);
-              loadScene(profile);
-            }}
+            onClick={() => loadScene(isMobile ? 'mobile' : profile)}
             disabled={status === 'loading'}
             style={{
               background: '#2563eb',
@@ -178,7 +178,7 @@ export function App() {
         </div>
       </header>
 
-      {isMobile && showMobileHelp && !scene && (
+      {isMobile && awaitingMobileChoice && !scene && (
         <div
           style={{
             padding: 16,
@@ -212,10 +212,7 @@ export function App() {
             </a>
             <button
               type="button"
-              onClick={() => {
-                setShowMobileHelp(false);
-                setProfile('mobile');
-              }}
+              onClick={onViewLight}
               style={{
                 flex: 1,
                 minWidth: 120,
