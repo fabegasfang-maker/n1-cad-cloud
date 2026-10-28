@@ -1,63 +1,55 @@
 # N1 CAD Cloud (v2)
 
-ระบบดูแผนผัง CAD แบบ **แปลงบนเซิร์ฟเวอร์** แล้วส่ง scene เบาไปวาดบนเบราว์เซอร์
+แปลง DWG **บนเซิร์ฟเวอร์** แล้วส่ง scene เบาไปวาดบนเบราว์เซอร์
 
-**แยกจาก** [`-cad-n1-viewer`](https://github.com/fabegasfang-maker/-cad-n1-viewer)
+แยกจาก [`-cad-n1-viewer`](https://github.com/fabegasfang-maker/-cad-n1-viewer)
 
 ## สถานะเฟส
 
 - [x] **เฟส 0** — โครง repo + health
 - [x] **เฟส 1** — Drive latest + แปลง DWG บนเซิร์ฟเวอร์ + แคช scene
-- [ ] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas
-- [ ] **เฟส 3** — profile=mobile + UX ดาวน์โหลด
+- [x] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas (pan/zoom)
+- [ ] **เฟส 3** — profile=mobile UX + ปุ่มมือถือ
 - [ ] **เฟส 4** — คิวแปลง / deploy production
 
-## โครงสร้าง
+## รันทั้งระบบ
 
-```
-apps/api/     Express + dwgdxf + Drive + cache
-apps/web/     Vite React (เฟส 2 จะวาด scene)
-packages/shared/
-```
-
-## API
-
-| Method | Path | คำอธิบาย |
-|--------|------|----------|
-| GET | `/api/health` | สถานะ |
-| GET | `/api/latest?folderId=` | metadata DWG ล่าสุด (เดือนล่าสุด → ไฟล์ล่าสุด) |
-| GET | `/api/scene?folderId=&profile=desktop\|mobile` | scene JSON (แคชตาม fileId+modifiedTime) |
-| GET | `/api/download?folderId=` หรือ `?fileId=` | ดาวน์โหลด DWG |
-
-Default folder: `1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D`
-
-## รัน API (เฟส 1)
+### 1) API
 
 ```bash
 cd apps/api
-cp .env.example .env
-# ใส่ GOOGLE_API_KEY=
+cp .env.example .env   # ใส่ GOOGLE_API_KEY=
 npm install
 npm run dev
+# http://localhost:8787/api/health
 ```
 
-ทดสอบ:
+### 2) Web
 
 ```bash
-curl -s http://localhost:8787/api/health | jq
-curl -s "http://localhost:8787/api/latest" | jq
-# ครั้งแรกอาจใช้เวลานาน (ดาวน์โหลด + แปลง)
-curl -s "http://localhost:8787/api/scene" -o scene.json
+cd apps/web
+cp .env.example .env   # VITE_API_BASE=http://localhost:8787
+npm install
+npm run dev
+# http://localhost:5173
 ```
 
-แคชอยู่ที่ `apps/api/cache/` — ครั้งถัดไปถ้าไฟล์บน Drive ไม่เปลี่ยนจะตอบเร็วขึ้น
+เปิดเว็บแล้วระบบจะเรียก `GET /api/scene` อัตโนมัติ — ครั้งแรกอาจช้า (แปลงบนเซิร์ฟเวอร์) ครั้งถัดไปใช้แคช
 
-## หมายเหตุการแปลง
+### การใช้บน canvas
 
-- ใช้ `dwgdxf` บน Node (WASM) แปลง DWG → DXF แล้วสกัด LINE / LWPOLYLINE / CIRCLE / TEXT
-- ยังไม่ครบทุก entity ของ AutoCAD — เฟส 1 เน้นแผนผังเส้น
-- เครื่อง API ควรมี RAM ≥ 1–2 GB ตอนแปลงไฟล์ใหญ่
+- ลากเมาส์ = เลื่อน
+- ลูกกลิ้ง = ซูม
+- ปุ่ม **โหลดใหม่** / สลับ Desktop–Mobile
+- **ดาวน์โหลด DWG** จาก Drive ผ่าน API
 
-## License
+## API
 
-Internal / โครงการ N1
+| Path | คำอธิบาย |
+|------|----------|
+| `/api/health` | สถานะ |
+| `/api/latest` | metadata ไฟล์ล่าสุด |
+| `/api/scene?profile=desktop\|mobile` | scene JSON |
+| `/api/download` | ไฟล์ DWG |
+
+Default folder: `1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D`
