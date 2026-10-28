@@ -2,80 +2,62 @@
 
 ระบบดูแผนผัง CAD แบบ **แปลงบนเซิร์ฟเวอร์** แล้วส่ง scene เบาไปวาดบนเบราว์เซอร์
 
-**แยกจาก** repo เดิม [`-cad-n1-viewer`](https://github.com/fabegasfang-maker/-cad-n1-viewer) — ของเก่ายังใช้ได้คู่ขนาน
+**แยกจาก** [`-cad-n1-viewer`](https://github.com/fabegasfang-maker/-cad-n1-viewer)
 
-## เป้าหมาย
+## สถานะเฟส
 
-| ลูกค้า (เบราว์เซอร์) | เซิร์ฟเวอร์ |
-|---------------------|-------------|
-| โหลด scene JSON เบา | ดึง DWG จาก Google Drive |
-| วาด canvas | แปลง DWG → geometry |
-| ไม่รัน WASM แปลงไฟล์ใหญ่ | แคชตาม `fileId` + `modifiedTime` |
+- [x] **เฟส 0** — โครง repo + health
+- [x] **เฟส 1** — Drive latest + แปลง DWG บนเซิร์ฟเวอร์ + แคช scene
+- [ ] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas
+- [ ] **เฟส 3** — profile=mobile + UX ดาวน์โหลด
+- [ ] **เฟส 4** — คิวแปลง / deploy production
 
 ## โครงสร้าง
 
 ```
-n1-cad-cloud/
-├── apps/
-│   ├── api/          # Node API (แปลง + Drive + แคช)
-│   └── web/          # Vite + React viewer เบา
-├── packages/
-│   └── shared/       # ชนิดข้อมูล scene ร่วมกัน
-└── README.md
+apps/api/     Express + dwgdxf + Drive + cache
+apps/web/     Vite React (เฟส 2 จะวาด scene)
+packages/shared/
 ```
 
-## โฟลเดอร์ Drive เริ่มต้น
-
-- Folder ID: `1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D`
-- โครงสร้าง: โฟลเดอร์หลัก → โฟลเดอร์เดือน (เช่น `ตุลาคม 2569`) → ไฟล์ `.dwg` ล่าสุด
-
-## API (ร่าง)
+## API
 
 | Method | Path | คำอธิบาย |
 |--------|------|----------|
-| GET | `/api/health` | สถานะบริการ |
-| GET | `/api/latest?folderId=` | metadata ไฟล์ CAD ล่าสุด |
-| GET | `/api/scene?folderId=` | geometry พร้อมวาด (JSON) |
-| GET | `/api/scene?folderId=&profile=mobile` | ฉบับย่อสำหรับมือถือ |
-| GET | `/api/download?fileId=` | ดาวน์โหลด DWG ต้นฉบับ |
+| GET | `/api/health` | สถานะ |
+| GET | `/api/latest?folderId=` | metadata DWG ล่าสุด (เดือนล่าสุด → ไฟล์ล่าสุด) |
+| GET | `/api/scene?folderId=&profile=desktop\|mobile` | scene JSON (แคชตาม fileId+modifiedTime) |
+| GET | `/api/download?folderId=` หรือ `?fileId=` | ดาวน์โหลด DWG |
 
-## เริ่มต้นพัฒนา
+Default folder: `1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D`
 
-### API
+## รัน API (เฟส 1)
 
 ```bash
 cd apps/api
-cp .env.example .env   # ใส่ GOOGLE_API_KEY / PORT
+cp .env.example .env
+# ใส่ GOOGLE_API_KEY=
 npm install
 npm run dev
 ```
 
-เปิด http://localhost:8787/api/health
-
-### Web
+ทดสอบ:
 
 ```bash
-cd apps/web
-cp .env.example .env   # VITE_API_BASE=http://localhost:8787
-npm install
-npm run dev
+curl -s http://localhost:8787/api/health | jq
+curl -s "http://localhost:8787/api/latest" | jq
+# ครั้งแรกอาจใช้เวลานาน (ดาวน์โหลด + แปลง)
+curl -s "http://localhost:8787/api/scene" -o scene.json
 ```
 
-## เฟสงาน
+แคชอยู่ที่ `apps/api/cache/` — ครั้งถัดไปถ้าไฟล์บน Drive ไม่เปลี่ยนจะตอบเร็วขึ้น
 
-- [x] **เฟส 0** — โครง repo + health
-- [ ] **เฟส 1** — Drive latest + แปลง DWG บนเซิร์ฟเวอร์ + แคช scene
-- [ ] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด
-- [ ] **เฟส 3** — profile=mobile + ปุ่มดาวน์โหลด
-- [ ] **เฟส 4** — คิวแปลง / monitor / deploy production
+## หมายเหตุการแปลง
 
-## โฮสต์
-
-- **Web:** GitHub Pages / Cloudflare Pages / Vercel (static)
-- **API:** Railway / Fly.io / VPS (ต้องมี RAM พอแปลง DWG — แนะนำ ≥1–2 GB)
-
-> GitHub Pages โฮสต์ได้แค่ static เว็บ — API ต้องคนละที่
+- ใช้ `dwgdxf` บน Node (WASM) แปลง DWG → DXF แล้วสกัด LINE / LWPOLYLINE / CIRCLE / TEXT
+- ยังไม่ครบทุก entity ของ AutoCAD — เฟส 1 เน้นแผนผังเส้น
+- เครื่อง API ควรมี RAM ≥ 1–2 GB ตอนแปลงไฟล์ใหญ่
 
 ## License
 
-Private/internal use สำหรับโครงการ N1 — ปรับตามนโยบายทีม
+Internal / โครงการ N1
