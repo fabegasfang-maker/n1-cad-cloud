@@ -1,16 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * วาด CadScene บน canvas — pan / zoom ง่ายๆ
+ * วาด CadScene — pan / zoom (เมาส์ + สัมผัส)
  */
-export function CadCanvas({ scene }) {
+export function CadCanvas({ scene, isMobile = false }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const viewRef = useRef({ scale: 1, ox: 0, oy: 0 });
   const dragRef = useRef(null);
+  const pinchRef = useRef(null);
   const [tick, setTick] = useState(0);
 
-  // fit bounds when scene changes
   useEffect(() => {
     const el = wrapRef.current;
     if (!el || !scene?.bounds) return;
@@ -19,23 +19,22 @@ export function CadCanvas({ scene }) {
     const h = Math.max(1, maxY - minY);
     const cw = el.clientWidth || 800;
     const ch = el.clientHeight || 600;
-    const pad = 40;
+    const pad = isMobile ? 24 : 40;
     const sx = (cw - pad * 2) / w;
     const sy = (ch - pad * 2) / h;
     const scale = Math.min(sx, sy);
     const ox = pad - minX * scale + (cw - pad * 2 - w * scale) / 2;
-    // CAD Y often up; canvas Y down → flip
     const oy = pad + maxY * scale + (ch - pad * 2 - h * scale) / 2;
     viewRef.current = { scale, ox, oy };
     setTick((t) => t + 1);
-  }, [scene]);
+  }, [scene, isMobile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap || !scene) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
     const rect = wrap.getBoundingClientRect();
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
@@ -51,20 +50,26 @@ export function CadCanvas({ scene }) {
     const toX = (x) => ox + x * scale;
     const toY = (y) => oy - y * scale;
 
-    ctx.lineWidth = Math.max(0.6, 1 / Math.max(scale, 0.001));
+    ctx.lineWidth = Math.max(0.5, (isMobile ? 1.2 : 1) / Math.max(scale, 0.001));
     ctx.strokeStyle = '#38bdf8';
     ctx.fillStyle = '#e2e8f0';
-    ctx.font = `${Math.max(10, 12 / Math.sqrt(Math.max(scale, 0.05)))}px system-ui,sans-serif`;
+    ctx.font = `${Math.max(9, 11 / Math.sqrt(Math.max(scale, 0.05)))}px system-ui,sans-serif`;
 
     const ents = scene.entities || [];
-    // simple viewport cull
-    const margin = 50;
+    const margin = 40;
     const vx0 = -margin;
     const vy0 = -margin;
     const vx1 = rect.width + margin;
     const vy1 = rect.height + margin;
 
+    // มือถือ: ข้ามบางเส้นตอนซูมออกมากเพื่อลื่นขึ้น
+    const stride =
+      isMobile && ents.length > 12000 && scale < 0.05
+        ? Math.max(1, Math.floor(ents.length / 10000))
+        : 1;
+
     for (let i = 0; i < ents.length; i++) {
+      if (stride > 1 && i % stride !== 0) continue;
       const e = ents[i];
       if (e.t === 'L') {
         const x1 = toX(e.x1);
@@ -90,7 +95,7 @@ export function CadCanvas({ scene }) {
         ctx.fillText(String(e.text).slice(0, 80), x, y);
       }
     }
-  }, [scene, tick]);
+  }, [scene, tick, isMobile]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -104,7 +109,6 @@ export function CadCanvas({ scene }) {
       const v = viewRef.current;
       const factor = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
       const newScale = Math.min(500, Math.max(0.001, v.scale * factor));
-      // zoom toward cursor
       const worldX = (mx - v.ox) / v.scale;
       const worldY = (v.oy - my) / v.scale;
       v.scale = newScale;
@@ -114,6 +118,13 @@ export function CadCanvas({ scene }) {
     };
 
     const onDown = (ev) => {
+      if (ev.pointerType === 'touch' && wrap.setPointerCapture) {
+        try {
+          wrap.setPointerCapture(ev.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
       dragRef.current = {
         x: ev.clientX,
         y: ev.clientY,
@@ -122,7 +133,7 @@ export function CadCanvas({ scene }) {
       };
     };
     const onMove = (ev) => {
-      if (!dragRef.current) return;
+      if (!dragRef.current || pinchRef.current) return;
       const d = dragRef.current;
       viewRef.current.ox = d.ox + (ev.clientX - d.x);
       viewRef.current.oy = d.oy + (ev.clientY - d.y);
@@ -132,20 +143,55 @@ export function CadCanvas({ scene }) {
       dragRef.current = null;
     };
 
+    // pinch zoom
+    const onTouchStart = (ev) => {
+      if (ev.touches.length === 2) {
+        const [a, b] = ev.touches;
+        const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        pinchRef.current = { dist, scale: viewRef.current.scale };
+        dragRef.current = null;
+      }
+    };
+    const onTouchMove = (ev) => {
+      if (ev.touches.length === 2 && pinchRef.current) {
+        ev.preventDefault();
+        const [a, b] = ev.touches;
+        const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        const factor = dist / Math.max(pinchRef.current.dist, 1);
+        viewRef.current.scale = Math.min(
+          500,
+          Math.max(0.001, pinchRef.current.scale * factor)
+        );
+        setTick((t) => t + 1);
+      }
+    };
+    const onTouchEnd = () => {
+      pinchRef.current = null;
+    };
+
     wrap.addEventListener('wheel', onWheel, { passive: false });
     wrap.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    wrap.addEventListener('touchstart', onTouchStart, { passive: true });
+    wrap.addEventListener('touchmove', onTouchMove, { passive: false });
+    wrap.addEventListener('touchend', onTouchEnd);
     return () => {
       wrap.removeEventListener('wheel', onWheel);
       wrap.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      wrap.removeEventListener('touchstart', onTouchStart);
+      wrap.removeEventListener('touchmove', onTouchMove);
+      wrap.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', height: '100%', touchAction: 'none', cursor: 'grab' }}>
+    <div
+      ref={wrapRef}
+      style={{ width: '100%', height: '100%', touchAction: 'none', cursor: 'grab' }}
+    >
       <canvas ref={canvasRef} />
     </div>
   );

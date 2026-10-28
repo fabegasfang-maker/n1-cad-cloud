@@ -1,56 +1,85 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CadCanvas } from './CadCanvas.jsx';
+import { isMobileDevice } from './device.js';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8787';
 const FOLDER_ID =
   import.meta.env.VITE_DEFAULT_FOLDER_ID || '1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D';
 
 export function App() {
+  const [isMobile, setIsMobile] = useState(false);
+  const [profile, setProfile] = useState('desktop');
   const [scene, setScene] = useState(null);
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [error, setError] = useState(null);
-  const [profile, setProfile] = useState('desktop');
+  const [showMobileHelp, setShowMobileHelp] = useState(true);
   const abortRef = useRef(null);
 
-  const loadScene = useCallback(async (prof = profile) => {
-    if (abortRef.current) abortRef.current.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
+  useEffect(() => {
+    const mobile = isMobileDevice();
+    setIsMobile(mobile);
+    if (mobile) setProfile('mobile');
+  }, []);
 
-    setStatus('loading');
-    setError(null);
-    setMessage('กำลังดึง scene จากเซิร์ฟเวอร์ (ครั้งแรกอาจใช้เวลานาน)...');
+  const loadScene = useCallback(
+    async (prof = profile) => {
+      if (abortRef.current) abortRef.current.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
 
-    try {
-      const url = `${API_BASE}/api/scene?folderId=${encodeURIComponent(FOLDER_ID)}&profile=${prof}`;
-      const res = await fetch(url, { signal: ac.signal });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || data.error || `HTTP ${res.status}`);
-      }
-      setScene(data);
-      setStatus('ready');
-      const cacheTag = data.cache === 'hit' ? 'แคช' : 'แปลงใหม่';
+      setStatus('loading');
+      setError(null);
       setMessage(
-        `${data.filename || 'drawing'} · ${Number(data.entityCount || 0).toLocaleString()} เส้น/วัตถุ · ${cacheTag}` +
-          (data.resolveMs != null ? ` · ${data.resolveMs} ms` : '') +
-          (data.monthFolder ? ` · ${data.monthFolder}` : '')
+        prof === 'mobile'
+          ? 'โหมดมือถือ: กำลังดึง scene ย่อจากเซิร์ฟเวอร์…'
+          : 'กำลังดึง scene จากเซิร์ฟเวอร์ (ครั้งแรกอาจใช้เวลานาน)…'
       );
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-      setStatus('error');
-      setError(e.message || String(e));
-      setMessage('');
-    }
-  }, [profile]);
+
+      try {
+        const url = `${API_BASE}/api/scene?folderId=${encodeURIComponent(FOLDER_ID)}&profile=${prof}`;
+        const res = await fetch(url, { signal: ac.signal });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || data.error || `HTTP ${res.status}`);
+        }
+        setScene(data);
+        setStatus('ready');
+        const cacheTag = data.cache === 'hit' ? 'แคช' : 'แปลงใหม่';
+        setMessage(
+          `${data.filename || 'drawing'} · ${Number(data.entityCount || 0).toLocaleString()} วัตถุ · ${cacheTag}` +
+            (data.resolveMs != null ? ` · ${data.resolveMs} ms` : '') +
+            (data.monthFolder ? ` · ${data.monthFolder}` : '') +
+            (prof === 'mobile' ? ' · mobile' : '')
+        );
+        if (prof === 'mobile') setShowMobileHelp(false);
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        setStatus('error');
+        setError(e.message || String(e));
+        setMessage('');
+      }
+    },
+    [profile]
+  );
 
   useEffect(() => {
+    // มือถือ: ไม่ auto-load ทันที — ให้เลือกดาวน์โหลดหรือโหลดฉบับเบา
+    if (isMobile && showMobileHelp && !scene) return;
     loadScene(profile);
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [loadScene, profile]);
+  }, [loadScene, profile, isMobile, showMobileHelp, scene]);
+
+  // แก้ dependency วน: auto-load เมื่อไม่ใช่มือถือ หรือมือถือกดแล้ว
+  useEffect(() => {
+    if (isMobile && showMobileHelp) return;
+    loadScene(profile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile, showMobileHelp, profile]);
+
+  const downloadUrl = `${API_BASE}/api/download?folderId=${encodeURIComponent(FOLDER_ID)}`;
 
   return (
     <div
@@ -67,73 +96,78 @@ export function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
-          padding: '10px 16px',
+          gap: 10,
+          padding: isMobile ? '10px 12px' : '10px 16px',
           borderBottom: '1px solid #1e293b',
           background: '#0f172a',
           flexShrink: 0,
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>N1 CAD Cloud</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: isMobile ? 15 : 16 }}>N1 CAD Cloud</div>
           <div
             style={{
-              fontSize: 13,
-              fontWeight: 600,
+              fontSize: isMobile ? 14 : 13,
+              fontWeight: 700,
               opacity: 0.95,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              maxWidth: 'min(70vw, 520px)',
+              maxWidth: isMobile ? '92vw' : 'min(70vw, 520px)',
             }}
             title={scene?.filename}
           >
-            {scene?.filename || (status === 'loading' ? 'กำลังโหลด…' : 'ยังไม่มีแบบ')}
+            {scene?.filename || (status === 'loading' ? 'กำลังโหลด…' : 'พร้อมเปิดแบบร่าง')}
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
-            value={profile}
-            onChange={(e) => setProfile(e.target.value)}
-            style={{
-              background: '#1e293b',
-              color: '#e2e8f0',
-              border: '1px solid #334155',
-              borderRadius: 8,
-              padding: '6px 10px',
-              fontSize: 13,
-            }}
-          >
-            <option value="desktop">Desktop</option>
-            <option value="mobile">Mobile</option>
-          </select>
+          {!isMobile && (
+            <select
+              value={profile}
+              onChange={(e) => setProfile(e.target.value)}
+              style={{
+                background: '#1e293b',
+                color: '#e2e8f0',
+                border: '1px solid #334155',
+                borderRadius: 8,
+                padding: '6px 10px',
+                fontSize: 13,
+              }}
+            >
+              <option value="desktop">Desktop</option>
+              <option value="mobile">Mobile</option>
+            </select>
+          )}
           <button
             type="button"
-            onClick={() => loadScene(profile)}
+            onClick={() => {
+              setShowMobileHelp(false);
+              loadScene(profile);
+            }}
             disabled={status === 'loading'}
             style={{
               background: '#2563eb',
               color: '#fff',
               border: 'none',
               borderRadius: 8,
-              padding: '6px 12px',
+              padding: '8px 12px',
               fontSize: 13,
               fontWeight: 600,
               cursor: status === 'loading' ? 'wait' : 'pointer',
               opacity: status === 'loading' ? 0.7 : 1,
             }}
           >
-            {status === 'loading' ? 'กำลังโหลด…' : 'โหลดใหม่'}
+            {status === 'loading' ? 'กำลังโหลด…' : isMobile ? 'ดูแบบย่อ' : 'โหลดใหม่'}
           </button>
           <a
-            href={`${API_BASE}/api/download?folderId=${encodeURIComponent(FOLDER_ID)}`}
+            href={downloadUrl}
             style={{
               background: '#059669',
               color: '#fff',
               borderRadius: 8,
-              padding: '6px 12px',
+              padding: '8px 12px',
               fontSize: 13,
               fontWeight: 600,
               textDecoration: 'none',
@@ -143,6 +177,63 @@ export function App() {
           </a>
         </div>
       </header>
+
+      {isMobile && showMobileHelp && !scene && (
+        <div
+          style={{
+            padding: 16,
+            background: '#064e3b',
+            borderBottom: '1px solid #047857',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>มือถือ / iPad</div>
+          <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.45, opacity: 0.95 }}>
+            แนะนำให้ <strong>ดาวน์โหลด DWG</strong> ไปเปิดในแอป CAD บนเครื่อง
+            หรือกด <strong>ดูแบบย่อ</strong> เพื่อดูในเว็บ (โหลดจากเซิร์ฟเวอร์ ไม่แปลงบนเครื่องคุณ)
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <a
+              href={downloadUrl}
+              style={{
+                flex: 1,
+                minWidth: 140,
+                textAlign: 'center',
+                background: '#10b981',
+                color: '#fff',
+                borderRadius: 10,
+                padding: '12px 14px',
+                fontWeight: 700,
+                fontSize: 14,
+                textDecoration: 'none',
+              }}
+            >
+              ดาวน์โหลดไฟล์งาน
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMobileHelp(false);
+                setProfile('mobile');
+              }}
+              style={{
+                flex: 1,
+                minWidth: 120,
+                background: '#1e293b',
+                color: '#fff',
+                border: '1px solid #334155',
+                borderRadius: 10,
+                padding: '12px 14px',
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              ดูแบบย่อในเว็บ
+            </button>
+          </div>
+        </div>
+      )}
 
       {(message || error) && (
         <div
@@ -168,25 +259,31 @@ export function App() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: 0.8,
+              padding: 24,
+              textAlign: 'center',
+              opacity: 0.85,
             }}
           >
-            กำลังแปลง/ดึง scene บนเซิร์ฟเวอร์…
+            กำลังดึง scene จากเซิร์ฟเวอร์…
+            <br />
+            <span style={{ fontSize: 12, opacity: 0.7 }}>เครื่องคุณไม่ต้องแปลง DWG</span>
           </div>
         )}
-        {scene && <CadCanvas scene={scene} />}
+        {scene && <CadCanvas scene={scene} isMobile={isMobile} />}
       </div>
 
       <footer
         style={{
-          padding: '6px 16px',
+          padding: isMobile ? '8px 12px' : '6px 16px',
           fontSize: 11,
           opacity: 0.55,
           borderTop: '1px solid #1e293b',
           flexShrink: 0,
         }}
       >
-        API: {API_BASE} · Folder: {FOLDER_ID.slice(0, 8)}… · ลากเมาส์ = เลื่อน · ลูกกลิ้ง = ซูม
+        {isMobile
+          ? 'สองนิ้วซูม · นิ้วเดียวเลื่อน · แปลงอยู่บนเซิร์ฟเวอร์'
+          : 'ลาก = เลื่อน · ลูกกลิ้ง = ซูม · แปลงอยู่บนเซิร์ฟเวอร์'}
       </footer>
     </div>
   );

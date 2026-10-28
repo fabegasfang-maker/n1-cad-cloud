@@ -8,40 +8,36 @@
 
 - [x] **เฟส 0** — โครง repo + health
 - [x] **เฟส 1** — Drive latest + แปลง DWG บนเซิร์ฟเวอร์ + แคช scene
-- [x] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas (pan/zoom)
-- [ ] **เฟส 3** — profile=mobile UX + ปุ่มมือถือ
+- [x] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas
+- [x] **เฟส 3** — มือถือ auto-profile, แบนเนอร์, ดาวน์โหลด DWG, pinch-zoom
 - [ ] **เฟส 4** — คิวแปลง / deploy production
 
 ## รันทั้งระบบ
 
-### 1) API
+### API
 
 ```bash
 cd apps/api
-cp .env.example .env   # ใส่ GOOGLE_API_KEY=
-npm install
-npm run dev
-# http://localhost:8787/api/health
+cp .env.example .env   # GOOGLE_API_KEY=
+npm install && npm run dev
 ```
 
-### 2) Web
+### Web
 
 ```bash
 cd apps/web
 cp .env.example .env   # VITE_API_BASE=http://localhost:8787
-npm install
-npm run dev
-# http://localhost:5173
+npm install && npm run dev
 ```
 
-เปิดเว็บแล้วระบบจะเรียก `GET /api/scene` อัตโนมัติ — ครั้งแรกอาจช้า (แปลงบนเซิร์ฟเวอร์) ครั้งถัดไปใช้แคช
+เปิด http://localhost:5173
 
-### การใช้บน canvas
+### มือถือ
 
-- ลากเมาส์ = เลื่อน
-- ลูกกลิ้ง = ซูม
-- ปุ่ม **โหลดใหม่** / สลับ Desktop–Mobile
-- **ดาวน์โหลด DWG** จาก Drive ผ่าน API
+- ตรวจจับอัตโนมัติ → ใช้ `profile=mobile`
+- แสดงแบนเนอร์: **ดาวน์โหลดไฟล์งาน** หรือ **ดูแบบย่อในเว็บ**
+- สองนิ้วซูม / นิ้วเดียวเลื่อน
+- เครื่องลูกไม่แปลง DWG (ทำบน API)
 
 ## API
 
