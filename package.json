@@ -1,0 +1,15 @@
+{
+  "name": "n1-cad-cloud",
+  "private": true,
+  "version": "0.1.0",
+  "description": "N1 CAD Cloud — server-side DWG conversion + light web viewer",
+  "scripts": {
+    "dev:api": "npm run dev --prefix apps/api",
+    "dev:web": "npm run dev --prefix apps/web",
+    "build:api": "npm run build --prefix apps/api",
+    "build:web": "npm run build --prefix apps/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
