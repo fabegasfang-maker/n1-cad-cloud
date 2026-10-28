@@ -7,45 +7,40 @@
 ## สถานะเฟส
 
 - [x] **เฟส 0** — โครง repo + health
-- [x] **เฟส 1** — Drive latest + แปลง DWG บนเซิร์ฟเวอร์ + แคช scene
-- [x] **เฟส 2** — เว็บโหลด `/api/scene` แล้ววาด canvas
-- [x] **เฟส 3** — มือถือ auto-profile, แบนเนอร์, ดาวน์โหลด DWG, pinch-zoom
-- [ ] **เฟส 4** — คิวแปลง / deploy production
+- [x] **เฟส 1** — Drive latest + แปลง + แคช scene
+- [x] **เฟส 2** — เว็บวาด canvas
+- [x] **เฟส 3** — มือถือ auto-profile / ดาวน์โหลด / pinch-zoom
+- [x] **เฟส 4** — คิวแปลง + Docker/Railway + GitHub Pages workflow
 
-## รันทั้งระบบ
-
-### API
+## รัน local
 
 ```bash
-cd apps/api
-cp .env.example .env   # GOOGLE_API_KEY=
+# API
+cd apps/api && cp .env.example .env   # GOOGLE_API_KEY=
+npm install && npm run dev
+
+# Web
+cd apps/web && cp .env.example .env
 npm install && npm run dev
 ```
 
-### Web
+## Production
 
-```bash
-cd apps/web
-cp .env.example .env   # VITE_API_BASE=http://localhost:8787
-npm install && npm run dev
-```
+ดูคู่มือเต็ม: **[DEPLOY.md](./DEPLOY.md)**
 
-เปิด http://localhost:5173
+สรุปสั้นๆ:
 
-### มือถือ
-
-- ตรวจจับอัตโนมัติ → ใช้ `profile=mobile`
-- แสดงแบนเนอร์: **ดาวน์โหลดไฟล์งาน** หรือ **ดูแบบย่อในเว็บ**
-- สองนิ้วซูม / นิ้วเดียวเลื่อน
-- เครื่องลูกไม่แปลง DWG (ทำบน API)
+1. Deploy `apps/api` บน Railway (Dockerfile) + ใส่ `GOOGLE_API_KEY`
+2. ตั้ง GitHub Secret `VITE_API_BASE` = URL API
+3. เปิด Pages จาก workflow `Deploy web to GitHub Pages`
 
 ## API
 
 | Path | คำอธิบาย |
 |------|----------|
-| `/api/health` | สถานะ |
-| `/api/latest` | metadata ไฟล์ล่าสุด |
-| `/api/scene?profile=desktop\|mobile` | scene JSON |
-| `/api/download` | ไฟล์ DWG |
+| `/api/health` | สถานะ + คิว + แรม |
+| `/api/latest` | DWG ล่าสุด |
+| `/api/scene?profile=` | scene (คิวแปลงถ้า cache miss) |
+| `/api/download` | ดาวน์โหลด DWG |
 
-Default folder: `1mP47qarQZxPF-ln5Dy7VZrJlcq0uPJ4D`
+คิว: `CONVERT_CONCURRENCY` (default 1), `CONVERT_QUEUE_MAX` (default 8)
